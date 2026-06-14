@@ -1,0 +1,84 @@
+# NullMaps single front door (production entrypoint).
+#
+# Only this service is published. The engines (valhalla, geocoder, normalizer)
+# are NOT reachable from outside — internal-only, reached via the adapter.
+# Martin is fronted here for the basemap (read-only).
+#
+# Auth: the adapter already enforces the shared API_KEY on /maps/* and /v1/*.
+# The gateway also refuses to proxy the API at all without a key (header or ?key=).
+# Tiles / style / demo are read-only and ungated.
+
+{
+	admin off
+	auto_https off
+}
+
+:8088 {
+	encode gzip
+
+	# API paths that lack a valid key -> 403 (header X-API-Key or ?key=)
+	@api_noauth {
+		path /maps/* /v1/* /metrics
+		not header X-API-Key {$API_KEY}
+		not query key={$API_KEY}
+	}
+	handle @api_noauth {
+		header Content-Type application/json
+		respond `{"status":"REQUEST_DENIED","error_message":"missing or invalid API key"}` 403
+	}
+
+	# Authorized API + metrics -> adapter
+	@api path /maps/* /v1/* /metrics
+	handle @api {
+		reverse_proxy adapter:8000
+	}
+
+	# API docs (OpenAPI / Swagger UI / ReDoc) — read-only, ungated.
+	@docs path /docs* /openapi.json /redoc*
+	handle @docs {
+		reverse_proxy adapter:8000
+	}
+
+	# Glyphs + sprites: effectively immutable until a data rebuild -> long cache.
+	@assets path /tiles/font/* /tiles/sprite/*
+	handle @assets {
+		header Cache-Control "public, max-age=604800, immutable"
+		reverse_proxy martin:3000 {
+			header_up X-Forwarded-Proto https
+			header_up X-Forwarded-Host {host}
+		}
+	}
+
+	# Vector tiles + TileJSON: refreshed ~monthly -> 1-day cache.
+	handle /tiles/* {
+		header Cache-Control "public, max-age=86400"
+		reverse_proxy martin:3000 {
+			header_up X-Forwarded-Proto https
+			header_up X-Forwarded-Host {host}
+		}
+	}
+
+	# Style JSON: short cache so edits land fast.
+	# Style JSON: short cache so edits (layers, source version) land fast.
+	@style path /style.json /style-dark.json /style-terrain.json
+	handle @style {
+		header Cache-Control "public, max-age=300"
+		reverse_proxy demo:80
+	}
+
+	# Keyless in-browser app proxy: inject the API key server-side so the page
+	# never sees it. The app calls /app/maps/api/... ; Caddy strips /app and adds
+	# the key header. (Open to page visitors — fine for an internal demo.)
+	@app path /app/*
+	handle @app {
+		uri strip_prefix /app
+		reverse_proxy adapter:8000 {
+			header_up X-API-Key {$API_KEY}
+		}
+	}
+
+	# Demo / web app page (public)
+	handle {
+		reverse_proxy demo:80
+	}
+}

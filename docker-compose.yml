@@ -1,0 +1,233 @@
+# NullMaps — the whole stack on one box. Source of truth for local + prod (Coolify).
+#
+# Phase 1 (active): martin (tile server) + demo (MapLibre HCMC page).
+# Later phases are scaffolded as commented blocks — uncomment as each lands.
+#
+# Run Phase 1:  make demo   (builds tiles if needed, then `docker compose up martin demo`)
+
+services:
+  # --- Phase 1: tile server -------------------------------------------------
+  # Martin serves the Vietnam PMTiles file over HTTP with tile-range support.
+  martin:
+    image: ghcr.io/maplibre/martin:latest
+    # route-prefix lets Caddy reverse-proxy Martin under /tiles so the browser
+    # talks to a single origin (the demo) — avoids cross-origin/CORS failures.
+    command: ["--route-prefix", "/tiles", "--font", "/fonts", "--sprite", "/sprites", "/data/${PMTILES_FILE:-vietnam.pmtiles}", "/data/hillshade.mbtiles", "/data/contours.mbtiles", "/data/terrain.mbtiles"]
+    expose:
+      - "3000"
+    volumes:
+      - ./data:/data:ro
+      - ./services/tiles/fonts:/fonts:ro       # self-hosted glyphs (make fonts)
+      - ./services/tiles/sprites:/sprites:ro   # POI icon sprites (Maki, brand-green)
+    restart: unless-stopped
+    mem_limit: 384m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/tiles/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # --- Phase 1: MapLibre demo page -----------------------------------------
+  # Static Caddy serving the demo HTML + style, and reverse-proxying /tiles/* to
+  # Martin so the map loads tiles same-origin (no CORS). Centered on HCMC.
+  demo:
+    image: caddy:2-alpine
+    expose:
+      - "80"
+    volumes:
+      - ./services/tiles/style:/usr/share/caddy:ro
+      - ./services/tiles/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - martin
+    restart: unless-stopped
+    mem_limit: 96m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80/style.json"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # --- Phase 2: Valhalla routing + matrix ----------------------------------
+  # Auto-builds the routing graph from the VN extract in services/routing/
+  # custom_files on first start (then reuses it). Motorbike costing is native:
+  # send costing=motor_scooter (or motorcycle) on /route and /sources_to_targets.
+  valhalla:
+    image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+    expose:
+      - "8002"
+    volumes:
+      - ./services/routing/custom_files:/custom_files
+    environment:
+      - use_tiles_ignore_pbf=False
+      - force_rebuild=False
+      - build_elevation=False      # skip elevation: faster build, less disk
+      - build_admins=True          # needed for country rules / border crossing
+      - build_time_zones=False
+      - serve_tiles=True
+    restart: unless-stopped
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8002/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 600s   # first start builds the graph
+
+  # --- Phase 2+: multi-vehicle route optimization (VRP) --------------------
+  # VROOM assigns jobs to vehicles + orders each route, using Valhalla for the cost
+  # matrix. Internal-only; the adapter proxies it at /v1/optimize (key-gated).
+  vroom:
+    image: ghcr.io/vroom-project/vroom-docker:v1.15.0
+    expose:
+      - "3000"
+    environment:
+      - VROOM_ROUTER=valhalla
+    volumes:
+      - ./services/routing/vroom-config.yml:/conf/config.yml
+    depends_on:
+      - valhalla
+    restart: unless-stopped
+    mem_limit: 512m
+
+  # --- Phase 3: lightweight VN geocoder ------------------------------------
+  # Serves /geocode /reverse /autocomplete from a SQLite index (importer.py).
+  # "Good enough" for internal use; Photon is the heavier production option on a
+  # box with the RAM/disk for a Nominatim import (see services/geocoder/README).
+  # Build the index first:  make geo-index
+  geocoder:
+    build: ./services/geocoder
+    expose:
+      - "2322"
+    volumes:
+      - ./services/geocoder/data:/data
+    environment:
+      - GEOCODER_DB=/data/geocoder.db
+    restart: unless-stopped
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://localhost:2322/healthz').status==200 else sys.exit(1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # --- Photon: prominence-ranked typeahead geocoder (OpenSearch-backed) -----
+  # Serves the prebuilt Vietnam dump (first run downloads + unpacks the index).
+  # The adapter prefers it for text search (autocomplete/geocode/reverse) and
+  # falls back to the lightweight SQLite `geocoder` (which also still serves
+  # nearby-by-category + place-details). Switch off with SEARCH_ENGINE=sqlite.
+  photon:
+    build: ./services/geocoder-photon
+    expose:
+      - "2322"
+    volumes:
+      - ./services/geocoder-photon/data:/photon
+    environment:
+      - JAVA_OPTS=-Xmx1g
+    restart: unless-stopped
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:2322/api?q=hcm&limit=1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
+
+  # --- Phase 4: Google/Goong-compat FastAPI adapter ------------------------
+  # Live: directions + distancematrix -> Valhalla; geocode/reverse/autocomplete/
+  # nearby/details -> geocoder; /v1/isochrone + /v1/snap native. All engines up.
+  adapter:
+    build: ./services/adapter
+    expose:
+      - "8000"
+    environment:
+      - API_KEY=${API_KEY}
+      - MARTIN_URL=http://martin:3000
+      - VALHALLA_URL=http://valhalla:8002
+      - GEOCODER_URL=http://geocoder:2322
+      - PHOTON_URL=http://photon:2322
+      - SEARCH_ENGINE=${SEARCH_ENGINE:-photon}
+      - OVERTURE_DB=/data/overture_vn.db
+      - NORMALIZER_URL=http://normalizer:8100
+      - VROOM_URL=http://vroom:3000
+    volumes:
+      # Overture Maps VN POIs (≈978k businesses) — read-only FTS index the adapter
+      # merges into Photon results. Absent locally = gracefully skipped (see main.py).
+      - ./data:/data:ro
+      # Fleet store (GPS telemetry + geofence zones) — writable SQLite (services/adapter/app/fleet.py)
+      - ./data/fleet:/fleet
+    depends_on:
+      - valhalla
+      - geocoder
+      - normalizer
+      - vroom
+    restart: unless-stopped
+    mem_limit: 320m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://localhost:8000/healthz').status==200 else sys.exit(1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # --- Phase 5 (optional): AI address normalizer ---------------------------
+  # No-op until an LLM is configured (LLM_MODEL + a provider key). Cleans messy
+  # VN address input before geocoding. The adapter calls it only on ?normalize=1.
+  normalizer:
+    build: ./services/normalizer
+    expose:
+      - "8100"
+    environment:
+      - LLM_MODEL=${LLM_MODEL:-}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_API_BASE=${LLM_API_BASE:-}
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
+    restart: unless-stopped
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://localhost:8100/healthz').status==200 else sys.exit(1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # --- Gateway: the single published entrypoint ----------------------------
+  # The ONLY service with a host port in prod. Fronts the demo + tiles and the
+  # key-gated API; the engines above are internal-only (expose, not ports).
+  # Local dev re-publishes the engine ports via docker-compose.override.yml.
+  gateway:
+    image: caddy:2-alpine
+    ports:
+      # Loopback only — a front proxy (Caddy/Traefik) terminates TLS and forwards.
+      - "127.0.0.1:${GATEWAY_PORT:-8088}:8088"
+    environment:
+      - API_KEY=${API_KEY}
+    volumes:
+      - ./infra/gateway/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - adapter
+      - martin
+      - demo
+    restart: unless-stopped
+    mem_limit: 96m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8088/style.json"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # --- Reserved: PostgreSQL + PostGIS --------------------------------------
+  # postgis:
+  #   image: postgis/postgis:16-3.4
+  #   environment:
+  #     - POSTGRES_USER=${POSTGRES_USER}
+  #     - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+  #     - POSTGRES_DB=${POSTGRES_DB}
+  #   ports: ["${POSTGRES_PORT:-5432}:5432"]
+  #   volumes: [pgdata:/var/lib/postgresql/data]
+
+# volumes:
+#   valhalla_tiles:
+#   photon_data:
+#   pgdata:

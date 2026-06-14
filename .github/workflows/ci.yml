@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  compose:
+    name: compose config (prod + dev)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose
+        run: |
+          cp .env.example .env
+          echo "API_KEY=ci-test-key" >> .env
+          # prod entrypoint = base only (engines internal, gateway published)
+          docker compose -f docker-compose.yml config -q
+          # dev = base + override (ports re-published for local testing)
+          docker compose config -q
+      - name: Assert only the gateway is published in prod
+        run: |
+          published=$(docker compose -f docker-compose.yml config \
+            | python3 -c "import sys,yaml;c=yaml.safe_load(sys.stdin);print(sorted(s for s,v in c['services'].items() if v.get('ports')))")
+          echo "published in prod: $published"
+          test "$published" = "['gateway']"
+
+  tests:
+    name: unit tests (py3.12)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [adapter, normalizer, geocoder]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps + run tests
+        working-directory: services/${{ matrix.service }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest
+          PYTHONPATH=. pytest -q
+
+  shell:
+    name: shellcheck + bash -n (infra)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax check
+        run: for f in infra/*.sh; do bash -n "$f"; done
+      - name: ShellCheck
+        run: shellcheck -e SC1091,SC2086 infra/*.sh
+
+  style:
+    name: style validate + icon coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Validate styles + icon coverage
+        run: |
+          npx -y -p @maplibre/maplibre-gl-style-spec gl-style-validate services/tiles/style/style.json
+          npx -y -p @maplibre/maplibre-gl-style-spec gl-style-validate services/tiles/style/style-dark.json
+          npx -y -p @maplibre/maplibre-gl-style-spec gl-style-validate services/tiles/style/style-terrain.json
+          node services/tiles/check-icons.mjs
