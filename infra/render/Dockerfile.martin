@@ -1,0 +1,39 @@
+# Martin tile server for Render (Phase 1 basemap).
+#
+# Render can't run docker-compose, so this is a single self-contained image:
+#   - the Martin binary (from the official image)
+#   - the self-hosted fonts + sprites (baked from the repo)
+#   - an entrypoint that downloads vietnam.pmtiles from $PMTILES_URL on first
+#     boot, then serves tiles/fonts/sprites under /tiles/*
+#
+# The heavy terrain overlays (hillshade/contours/terrain .mbtiles) are omitted
+# on purpose — they don't exist yet and would make Martin crash-loop.
+#
+# Build context must be the REPO ROOT (render.yaml sets dockerContext: .).
+
+FROM ghcr.io/maplibre/martin:latest AS martin
+
+FROM debian:bookworm-slim
+
+# curl + CA certs so the entrypoint can fetch the pmtiles over HTTPS.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+# Martin binary from the official image.
+COPY --from=martin /usr/local/bin/martin /usr/local/bin/martin
+
+# Self-hosted glyphs + sprites (already in the repo).
+COPY services/tiles/fonts /fonts
+COPY services/tiles/sprites /sprites
+
+COPY infra/render/martin-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Where the downloaded basemap lands. Mount a Render disk here to persist it
+# across restarts (optional; see render.yaml).
+ENV PMTILES_PATH=/data/vietnam.pmtiles
+
+# Render provides $PORT; Martin binds to it (falls back to 3000 locally).
+EXPOSE 3000
+ENTRYPOINT ["/entrypoint.sh"]
