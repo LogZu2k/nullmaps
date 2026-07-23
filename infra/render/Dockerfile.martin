@@ -33,9 +33,14 @@ RUN curl -fSL "https://github.com/maplibre/martin/releases/download/${MARTIN_VER
  && rm -rf /tmp/martin.tar.gz \
  && martin --version
 
-# Self-hosted glyphs + sprites (already in the repo).
-COPY services/tiles/fonts /fonts
+# Sprites are committed to the repo — copy them in.
 COPY services/tiles/sprites /sprites
+
+# Fonts are gitignored (fetched by `make fonts`), so they're NOT in the repo and
+# can't be COPYed on Render. Download the same Noto Sans glyphs here instead.
+RUN mkdir -p /fonts \
+ && curl -fSL "https://github.com/googlefonts/noto-fonts/raw/main/hinted/ttf/NotoSans/NotoSans-Regular.ttf" -o /fonts/NotoSans-Regular.ttf \
+ && curl -fSL "https://github.com/googlefonts/noto-fonts/raw/main/hinted/ttf/NotoSans/NotoSans-Bold.ttf" -o /fonts/NotoSans-Bold.ttf
 
 COPY infra/render/martin-entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
