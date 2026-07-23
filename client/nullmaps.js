@@ -2,7 +2,7 @@
 //
 //   import { NullMaps } from "./nullmaps.js";
 //   const nm = new NullMaps({ key: "YOUR_KEY" });   // baseUrl defaults to maps.nullshift.sh
-//   const route = await nm.directions("10.7725,106.6980", "10.7951,106.7218");
+//   const route = await nm.directions("21.0587,105.8194", "21.0287,105.8524");
 //   nm.map(maplibregl, "map");                       // embed the self-hosted basemap
 
 let _pmtilesRegistered = false;
@@ -81,8 +81,8 @@ export class NullMaps {
     const m = new maplibregl.Map({
       container,
       style: `${this.base}/${styleFile(theme)}`,
-      center: [106.700, 10.776],
-      zoom: 11,
+      center: [105.818, 21.058],   // Hồ Tây, Hà Nội (lon, lat)
+      zoom: 12,
       ...(theme === "terrain" ? { pitch: 60, maxPitch: 85 } : {}),
       ...mapOpts,
     });
@@ -153,7 +153,7 @@ export class NullMaps {
   // Render a static map image client-side (no server renderer needed). Returns a
   // PNG data URL. opts: { center:[lng,lat], zoom, size:[w,h], theme, markers:[{lng,lat,color}], route }
   staticImage(maplibregl, opts = {}) {
-    const { center = [106.700, 10.776], zoom = 12, size = [600, 400], theme = "light",
+    const { center = [105.818, 21.058], zoom = 13, size = [600, 400], theme = "light",
       markers = [], route = null, pitch = 0, bearing = 0, pmtiles } = opts;
     registerPmtilesProtocol(maplibregl, pmtiles);
     return new Promise((resolve, reject) => {

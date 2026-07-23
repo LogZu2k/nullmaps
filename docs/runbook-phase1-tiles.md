@@ -12,7 +12,7 @@ cp .env.example .env          # set API_KEY (and ports if 3000/8080 are taken)
 make fetch                    # download data/raw/vietnam-latest.osm.pbf  (VN only — never planet)
 make tiles                    # Planetiler -> data/vietnam.pmtiles  (minutes)
 make demo                     # start martin + demo
-open http://localhost:8080    # HCMC basemap
+open http://localhost:8080    # Hồ Tây (Hà Nội) basemap
 ```
 
 `make demo` builds tiles automatically if `data/vietnam.pmtiles` is missing.
@@ -22,7 +22,7 @@ open http://localhost:8080    # HCMC basemap
 - `curl http://localhost:3000/tiles/health` → ok.
 - `curl http://localhost:3000/tiles/catalog` → lists the `vietnam` source.
 - `curl http://localhost:8080/tiles/vietnam` → TileJSON (same-origin path the demo uses).
-- Demo page renders roads/water/labels around Ho Chi Minh City and pans/zooms smoothly.
+- Demo page renders roads/water/labels around Hồ Tây (Hà Nội) and pans/zooms smoothly.
 
 ## Troubleshooting
 

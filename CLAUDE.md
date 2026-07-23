@@ -93,8 +93,8 @@ nullmaps/
 
 ## Roadmap (build in this order)
 
-1. **Tiles + render (done first):** VN PMTiles → Martin → MapLibre demo centered on **Ho Chi Minh
-   City**. End-to-end visible win.
+1. **Tiles + render (done first):** VN PMTiles → Martin → MapLibre demo centered on **Hồ Tây, Hà
+   Nội**. End-to-end visible win.
 2. **Routing + Matrix:** Valhalla motorbike profile; `/route` + `/matrix`. *(Bump to Phase 1 priority
    if I say fleet/dispatch is the immediate need.)*
 3. **Geocoding + Autocomplete:** Photon on VN data; `/geocode`, `/reverse`, `/autocomplete`.

@@ -25,7 +25,7 @@ make tiles                    # download VN extract + build data/vietnam.pmtiles
 make demo                     # start Martin + demo, prints the URL
 ```
 
-- Demo: <http://localhost:8080> — Ho Chi Minh City basemap.
+- Demo: <http://localhost:8080> — Hồ Tây (Hà Nội) basemap.
 - Tiles via the demo origin (no CORS): TileJSON <http://localhost:8080/tiles/vietnam>.
 - Martin direct (debug): catalog <http://localhost:3000/tiles/catalog>.
 
@@ -33,7 +33,7 @@ make demo                     # start Martin + demo, prints the URL
 
 - `style/style.json` — full MapLibre style (OMT layers: water, landcover/landuse, parks, buildings,
   roads with casing, labels, admin boundaries) + a **sovereignty** GeoJSON layer.
-- `style/index.html` — demo page (HCMC); honors `prefers-color-scheme` and has a light/dark toggle.
+- `style/index.html` — demo page (Hồ Tây, Hà Nội); honors `prefers-color-scheme` and has a light/dark toggle.
 - `style/style-dark.json` — dark MapLibre style, served at `/style-dark.json` (first-class endpoint).
 - `Caddyfile` — serves the demo + reverse-proxies Martin under `/tiles`.
 - `fonts/` — self-hosted glyph fonts (`make fonts` downloads Noto Sans); Martin serves them at

@@ -19,8 +19,8 @@
 
 ```bash
 make graph         # build/start Valhalla (first run builds the graph — minutes)
-make route-test    # HCMC Ben Thanh -> Landmark 81, motor_scooter
-make matrix-test   # 2x2 District-1 distance matrix, motor_scooter
+make route-test    # Hanoi Hồ Gươm -> Keangnam Landmark 72, motor_scooter
+make matrix-test   # 2x2 Hoàn Kiếm distance matrix, motor_scooter
 ```
 
 ## Endpoints (Valhalla native, on :8002)

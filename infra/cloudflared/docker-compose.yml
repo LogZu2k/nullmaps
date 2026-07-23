@@ -1,0 +1,19 @@
+# Free alternative to a paid VPS: run the whole NullMaps stack on any machine
+# (this dev box included) and expose it publicly through a Cloudflare Tunnel —
+# no port forwarding, no static IP, free TLS, reuses whatever domain is already
+# on Cloudflare (e.g. maps.nullshift.sh). See README.md in this directory for
+# the one-time dashboard setup that produces CLOUDFLARE_TUNNEL_TOKEN.
+#
+# Usage: docker compose -f docker-compose.yml -f infra/cloudflared/docker-compose.yml up -d cloudflared
+# (merges into the same project network, so it reaches the gateway by service name)
+
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - gateway
+    restart: unless-stopped
+    mem_limit: 128m

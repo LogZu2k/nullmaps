@@ -82,7 +82,7 @@ up: fonts ## Start Phase 1 services (martin + demo) in the background
 demo: fonts ## Build tiles if missing, start services, print the demo URL
 	@test -f "$(DATA_DIR)/$(PMTILES_FILE)" || $(MAKE) tiles
 	docker compose up -d martin demo
-	@echo ">> Demo:   http://localhost:$(DEMO_PORT)   (Ho Chi Minh City basemap)"
+	@echo ">> Demo:   http://localhost:$(DEMO_PORT)   (Ho Tay / Hanoi basemap)"
 	@echo ">> Martin: http://localhost:$(MARTIN_PORT)/catalog"
 
 ADAPTER_PORT  ?= 8010
@@ -111,30 +111,30 @@ geo-index: $(PBF) ## (Phase 3) Build the VN geocoder SQLite index from the OSM e
 .PHONY: geo-test
 geo-test: ## (Phase 3) Smoke-test geocode / autocomplete / reverse
 	@P=$(GEOCODER_PORT); \
-	echo ">> autocomplete 'ben thanh':"; \
-	curl -fsS "http://localhost:$$P/autocomplete?q=ben+thanh&limit=3" \
+	echo ">> autocomplete 'dong xuan':"; \
+	curl -fsS "http://localhost:$$P/autocomplete?q=dong+xuan&limit=3" \
 	  | python3 -c "import sys,json;[print('   ',r['name'],'('+r['kind']+')',round(r['lat'],4),round(r['lon'],4)) for r in json.load(sys.stdin)['results']]"; \
-	echo ">> geocode 'nguyen hue' (diacritic-folded):"; \
-	curl -fsS "http://localhost:$$P/geocode?q=nguyen+hue&limit=2" \
+	echo ">> geocode 'hang bong' (diacritic-folded):"; \
+	curl -fsS "http://localhost:$$P/geocode?q=hang+bong&limit=2" \
 	  | python3 -c "import sys,json;[print('   ',r['name']) for r in json.load(sys.stdin)['results']]"; \
-	echo ">> reverse 10.7725,106.6980:"; \
-	curl -fsS "http://localhost:$$P/reverse?lat=10.7725&lon=106.6980" \
+	echo ">> reverse 21.0287,105.8524 (Ho Guom):"; \
+	curl -fsS "http://localhost:$$P/reverse?lat=21.0287&lon=105.8524" \
 	  | python3 -c "import sys,json;r=json.load(sys.stdin)['result'];print('   ',r['name'] if r else None, (str(r['distance_m'])+'m') if r else '')"
 
 .PHONY: adapter-test
 adapter-test: ## (Phase 4) Smoke-test the Google-compat adapter (Directions+Matrix live, geocode pending)
 	@K=$$(grep -E '^API_KEY=' .env | cut -d= -f2); P=$(ADAPTER_PORT); \
 	echo ">> directions (motorbike):"; \
-	curl -fsS "http://localhost:$$P/maps/api/directions/json?origin=10.7725,106.6980&destination=10.7951,106.7218&key=$$K" \
+	curl -fsS "http://localhost:$$P/maps/api/directions/json?origin=21.0287,105.8524&destination=21.0170,105.7838&key=$$K" \
 	  | python3 -c "import sys,json;l=json.load(sys.stdin)['routes'][0]['legs'][0];print('   ',l['distance']['text'],l['duration']['text'])"; \
 	echo ">> distancematrix (2x2):"; \
-	curl -fsS "http://localhost:$$P/maps/api/distancematrix/json?origins=10.7725,106.6980|10.7800,106.7010&destinations=10.7626,106.6822|10.7691,106.7000&key=$$K" \
+	curl -fsS "http://localhost:$$P/maps/api/distancematrix/json?origins=21.0287,105.8524|21.0245,105.8412&destinations=21.0273,105.8355|21.0384,105.8497&key=$$K" \
 	  | python3 -c "import sys,json;b=json.load(sys.stdin);print('   ',[[e.get('distance',{}).get('text','-') for e in r['elements']] for r in b['rows']])"; \
-	echo ">> geocode (address=nguyen hue):"; \
-	curl -fsS "http://localhost:$$P/maps/api/geocode/json?address=nguyen+hue&key=$$K" \
+	echo ">> geocode (address=hang bong):"; \
+	curl -fsS "http://localhost:$$P/maps/api/geocode/json?address=hang+bong&key=$$K" \
 	  | python3 -c "import sys,json;r=json.load(sys.stdin)['results'][0];print('   ',r['formatted_address'],r['geometry']['location'])"; \
-	echo ">> autocomplete (input=ben thanh):"; \
-	curl -fsS "http://localhost:$$P/maps/api/place/autocomplete/json?input=ben+thanh&key=$$K" \
+	echo ">> autocomplete (input=dong xuan):"; \
+	curl -fsS "http://localhost:$$P/maps/api/place/autocomplete/json?input=dong+xuan&key=$$K" \
 	  | python3 -c "import sys,json;[print('   ',p['description']) for p in json.load(sys.stdin)['predictions'][:2]]"
 
 NORMALIZER_PORT ?= 8100
@@ -143,20 +143,20 @@ NORMALIZER_PORT ?= 8100
 norm-test: ## (Phase 5) Check the AI normalizer (no-op until an LLM is configured)
 	@curl -fsS "http://localhost:$(NORMALIZER_PORT)/healthz" \
 	  | python3 -c "import sys,json;d=json.load(sys.stdin);print('   enabled:',d['enabled'],'model:',d['model'])"; \
-	curl -fsS "http://localhost:$(NORMALIZER_PORT)/normalize?q=Q1+P.Ben+Nghe" \
+	curl -fsS "http://localhost:$(NORMALIZER_PORT)/normalize?q=Q.Tay+Ho+P.Quang+An" \
 	  | python3 -c "import sys,json;d=json.load(sys.stdin);print('   ',repr(d['original']),'->',repr(d['normalized']),'('+d['engine']+')')"
 
 .PHONY: fleet-test
 fleet-test: ## (fleet) Optimized multi-stop route, isochrone, snap-to-roads
 	@K=$$(grep -E '^API_KEY=' .env | cut -d= -f2); P=$(ADAPTER_PORT); \
 	echo ">> optimized 4-stop (waypoints=optimize:true):"; \
-	curl -fsS "http://localhost:$$P/maps/api/directions/json?origin=10.7725,106.6980&destination=10.7951,106.7218&waypoints=optimize:true%7C10.8231,106.6297%7C10.7546,106.6655&key=$$K" \
+	curl -fsS "http://localhost:$$P/maps/api/directions/json?origin=21.0287,105.8524&destination=21.0170,105.7838&waypoints=optimize:true%7C21.0587,105.8194%7C21.0273,105.8355&key=$$K" \
 	  | python3 -c "import sys,json;r=json.load(sys.stdin)['routes'][0];print('   legs',len(r['legs']),'order',r.get('waypoint_order'))"; \
 	echo ">> isochrone (10,20 min):"; \
-	curl -fsS "http://localhost:$$P/v1/isochrone?location=10.7725,106.6980&contours=10,20&key=$$K" \
+	curl -fsS "http://localhost:$$P/v1/isochrone?location=21.0287,105.8524&contours=10,20&key=$$K" \
 	  | python3 -c "import sys,json;g=json.load(sys.stdin);print('   contour polygons:',len(g['features']))"; \
-	echo ">> snap-to-roads (3 pts):"; \
-	curl -fsS "http://localhost:$$P/v1/snap?path=10.7725,106.6980%7C10.7760,106.7000%7C10.7800,106.7010&key=$$K" \
+	echo ">> snap-to-roads (3 pts along duong Thanh Nien):"; \
+	curl -fsS "http://localhost:$$P/v1/snap?path=21.0440,105.8382%7C21.0465,105.8360%7C21.0492,105.8340&key=$$K" \
 	  | python3 -c "import sys,json;d=json.load(sys.stdin);print('   matched',d['distance']['text'],d['duration']['text'])"
 
 .PHONY: smoke
@@ -189,20 +189,20 @@ graph: ## (Phase 2) Build/start Valhalla — auto-builds the VN routing graph on
 	@echo ">> Watch:  docker compose logs -f valhalla   |   Ready when GET /status returns tileset_last_modified"
 
 .PHONY: route-test
-route-test: ## (Phase 2) Smoke-test an HCMC motorbike route (costing=motor_scooter)
-	@echo ">> HCMC: Ben Thanh Market -> Landmark 81, costing=motor_scooter"
+route-test: ## (Phase 2) Smoke-test a Hanoi motorbike route (costing=motor_scooter)
+	@echo ">> Hanoi: Ho Guom -> Keangnam Landmark 72, costing=motor_scooter"
 	@curl -fsS http://localhost:$(VALHALLA_PORT)/route \
 	  -H 'Content-Type: application/json' \
-	  -d '{"locations":[{"lat":10.7725,"lon":106.6980},{"lat":10.7951,"lon":106.7218}],"costing":"motor_scooter","units":"kilometers"}' \
+	  -d '{"locations":[{"lat":21.0287,"lon":105.8524},{"lat":21.0170,"lon":105.7838}],"costing":"motor_scooter","units":"kilometers"}' \
 	  | python3 -c "import sys,json; s=json.load(sys.stdin)['trip']['summary']; print('>> OK: %.1f km, %.0f min'%(s['length'], s['time']/60))" \
 	  || echo ">> Valhalla not ready — check: docker compose logs -f valhalla"
 
 .PHONY: matrix-test
 matrix-test: ## (Phase 2) Smoke-test a 2x2 distance matrix (costing=motor_scooter)
-	@echo ">> HCMC District 1: 2 sources x 2 targets, motor_scooter"
+	@echo ">> Hanoi Hoan Kiem: 2 sources x 2 targets, motor_scooter"
 	@curl -fsS http://localhost:$(VALHALLA_PORT)/sources_to_targets \
 	  -H 'Content-Type: application/json' \
-	  -d '{"sources":[{"lat":10.7725,"lon":106.6980},{"lat":10.7800,"lon":106.7010}],"targets":[{"lat":10.7626,"lon":106.6822},{"lat":10.7691,"lon":106.7000}],"costing":"motor_scooter","units":"kilometers"}' \
+	  -d '{"sources":[{"lat":21.0287,"lon":105.8524},{"lat":21.0245,"lon":105.8412}],"targets":[{"lat":21.0273,"lon":105.8355},{"lat":21.0384,"lon":105.8497}],"costing":"motor_scooter","units":"kilometers"}' \
 	  | python3 -c "import sys,json; m=json.load(sys.stdin)['sources_to_targets']; print('>> matrix km:', [[c['distance'] for c in r] for r in m])" \
 	  || echo ">> Valhalla not ready — check: docker compose logs -f valhalla"
 

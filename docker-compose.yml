@@ -1,6 +1,6 @@
 # NullMaps — the whole stack on one box. Source of truth for local + prod (Coolify).
 #
-# Phase 1 (active): martin (tile server) + demo (MapLibre HCMC page).
+# Phase 1 (active): martin (tile server) + demo (MapLibre Hồ Tây / Hà Nội page).
 # Later phases are scaffolded as commented blocks — uncomment as each lands.
 #
 # Run Phase 1:  make demo   (builds tiles if needed, then `docker compose up martin demo`)
@@ -30,7 +30,7 @@ services:
 
   # --- Phase 1: MapLibre demo page -----------------------------------------
   # Static Caddy serving the demo HTML + style, and reverse-proxying /tiles/* to
-  # Martin so the map loads tiles same-origin (no CORS). Centered on HCMC.
+  # Martin so the map loads tiles same-origin (no CORS). Centered on Hồ Tây, Hà Nội.
   demo:
     image: caddy:2-alpine
     expose:
@@ -66,7 +66,7 @@ services:
       - build_time_zones=False
       - serve_tiles=True
     restart: unless-stopped
-    mem_limit: 2g
+    mem_limit: 6g
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8002/status"]
       interval: 30s

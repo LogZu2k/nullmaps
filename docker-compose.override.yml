@@ -8,6 +8,9 @@
 
 services:
   martin:
+    # TODO: drop this command override once infra/build-{hillshade,contour,terrain}.sh
+    # have been run and data/{hillshade,contours,terrain}.mbtiles exist locally.
+    command: ["--route-prefix", "/tiles", "--font", "/fonts", "--sprite", "/sprites", "/data/${PMTILES_FILE:-vietnam.pmtiles}"]
     ports:
       - "${MARTIN_PORT:-3000}:3000"
   demo:
